@@ -25,7 +25,6 @@ pub enum Punctuation {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'a> {
 	Identifier(&'a str),
-	Directive(&'a str),
 	Punctuation(Punctuation),
 	Signed(i32),
 	Unsigned(u32),
@@ -38,14 +37,6 @@ fn identifier(s: &str) -> IResult<&str, Token> {
 	let (s, end) = alphanumeric0(s)?;
 	let iden = unsafe { concat(start, end).unwrap() };
 	Ok((s, Token::Identifier(iden)))
-}
-
-fn directive(s: &str) -> IResult<&str, Token> {
-	let (s, _) = char('.')(s)?;
-	let (s, start) = alpha1(s)?;
-	let (s, end) = alphanumeric0(s)?;
-	let iden = unsafe { concat(start, end).unwrap() };
-	Ok((s, Token::Directive(iden)))
 }
 
 fn signed(s: &str) -> IResult<&str, Token> {
@@ -72,7 +63,6 @@ fn punctuation(s: &str) -> IResult<&str, Token> {
 fn token(s: &str) -> IResult<&str, Token> {
 	let (s, _) = multispace0(s)?;
 	let (s, t) = alt((
-		directive,
 		identifier,
 		constant,
 		punctuation,

@@ -6,6 +6,7 @@ pub use token::{
 
 use nom::{
 	branch::alt,
+	combinator::opt,
 	Err as NomErr,
 	error::{
 		ErrorKind,
@@ -31,6 +32,7 @@ use bibe_instr::{
 #[derive(Debug, PartialEq)]
 pub enum Error<'a> {
 	ExpectedBinOp(Option<&'a Token<'a>>),
+	ExpectedCondition(Option<&'a Token<'a>>),
 	ExpectedIdentifer(Option<&'a Token<'a>>),
 	ExpectedImmediate(Option<&'a Token<'a>>),
 	ExpectedPunctuation(Option<&'a Token<'a>>, Punctuation),
@@ -148,6 +150,10 @@ fn comma<'a>(s: &'a [Token]) -> Result<'a, Punctuation> {
 	punctuation(s, Punctuation::Comma)
 }
 
+fn period<'a>(s: &'a [Token]) -> Result<'a, Punctuation> {
+	punctuation(s, Punctuation::Period)
+}
+
 fn binop<'a>(s: &'a [Token]) -> Result<'a, BinOp> {
 	let slice = slice_as_option(s);
 	let err = error(s, Error::ExpectedBinOp(slice));
@@ -218,8 +224,35 @@ fn rrr<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	})))
 }
 
+fn condition<'a>(s: &'a [Token]) -> Result<'a, rri::Condition> {
+	let (s, p) = opt(period)(s)?;
+	if p.is_none() {
+		return Ok((s, rri::Condition::Al));
+	}
+
+	let (s, iden) = identifier(s)?;
+	let cond = match iden {
+		"al" => Some(rri::Condition::Al),
+		"eq" => Some(rri::Condition::Eq),
+		"ne" => Some(rri::Condition::Ne),
+		"gt" => Some(rri::Condition::Gt),
+		"ge" => Some(rri::Condition::Ge),
+		"lt" => Some(rri::Condition::Lt),
+		"le" => Some(rri::Condition::Le),
+		"nv" => Some(rri::Condition::Nv),
+		_ => None
+	};
+
+	if cond.is_none() {
+		return error(s, Error::ExpectedCondition(Some(&s[0])))
+	}
+
+	Ok((s, cond.unwrap()))
+}
+
 fn rri<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	let (s, op) = binop(s)?;
+	let (s, cond) = condition(s)?;
 	let (s, dest) = register(s)?;
 	let (s, _) = comma(s)?;
 	let (s, src) = register(s)?;
@@ -227,7 +260,7 @@ fn rri<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	let (s, imm) = immediate(s)?;
 	Ok((s, Instruction::Rri(rri::Instruction {
 		op: op,
-		cond: rri::Condition::Al,
+		cond: cond,
 		dest: dest,
 		src: src,
 		imm: imm,
@@ -253,12 +286,13 @@ fn mov_r<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 
 fn mov_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	let (s, _) = string("mov")(s)?;
+	let (s, cond) = condition(s)?;
 	let (s, dest) = register(s)?;
 	let (s, _) = comma(s)?;
 	let (s, imm) = immediate(s)?;
 	return Ok((s, Instruction::Rri(rri::Instruction {
 		op: BinOp::Add,
-		cond: rri::Condition::Al,
+		cond: cond,
 		dest: dest,
 		src: Register::r0(),
 		imm: imm,
