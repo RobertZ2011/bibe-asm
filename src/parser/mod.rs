@@ -1,0 +1,246 @@
+mod token;
+pub use token::{
+	TokenStream,
+	tokenize
+};
+
+use nom::{
+	branch::alt,
+	Err as NomErr,
+	error::{
+		ErrorKind,
+		ParseError,
+	},
+	IResult,
+	multi::many0,
+};
+
+use crate::parser::token::{ 
+	Punctuation,
+	Token,
+};
+
+use bibe_instr::{
+	BinOp,
+	Register,
+	rrr,
+	rri,
+	Instruction,
+};
+
+#[derive(Debug, PartialEq)]
+pub enum Error<'a> {
+	ExpectedBinOp(Option<&'a Token<'a>>),
+	ExpectedIdentifer(Option<&'a Token<'a>>),
+	ExpectedImmediate(Option<&'a Token<'a>>),
+	ExpectedPunctuation(Option<&'a Token<'a>>, Punctuation),
+	ExpectedRegister(Option<&'a Token<'a>>),
+
+	InvalidOp(&'a str),
+	ImmediateRange(i16),
+	InvalidRegister(&'a str),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ErrorWrapper<'a, I> {
+	Nom(I, ErrorKind),
+	Err(Error<'a>),
+}
+
+impl<'a, I> ParseError<I> for ErrorWrapper<'a, I> {
+	fn from_error_kind(input: I, kind: ErrorKind) -> Self {
+		ErrorWrapper::Nom(input, kind)
+	}
+	
+	fn append(_: I, _: ErrorKind, other: Self) -> Self {
+		other
+	}
+}
+
+pub type Result<'a, T> = IResult<&'a [Token<'a>], T, ErrorWrapper<'a, &'a [Token<'a>]>>; 
+
+fn error<'a, T>(_s: &'a [Token], err: Error<'a>) -> Result<'a, T> {
+	Err(NomErr::Error(ErrorWrapper::Err(err)))
+}
+
+fn slice_as_option<'a>(s: &'a [Token<'a>]) -> Option<&'a Token<'a>> {
+	if s.len() == 0 { None } else { Some(&s[0]) }
+}
+
+fn identifier<'a>(s: &'a [Token<'a>]) -> Result<'a, &'a str> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedIdentifer(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	if let Token::Identifier(iden) = s[0] {
+		return Ok((&s[1..], iden));
+	}
+
+	return err;
+}
+
+fn register<'a>(s: &'a [Token]) -> Result<'a, Register> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedRegister(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	if let Token::Identifier(iden) = s[0] {
+		let reg = match iden {
+			"pc" => Some(Register::pc()),
+			"lr" => Some(Register::lr()),
+			"fp" => Some(Register::fp()),
+			"sp" => Some(Register::sp()),
+			_ => if iden.len() == 2 {
+				iden[1..2].parse::<u8>().map_or(None, |r| Some(Register::new(r).unwrap()))
+			} else if iden.len() == 3 {
+				iden[1..3].parse::<u8>().map_or(None, |r| Some(Register::new(r).unwrap()))
+			} else {
+				None
+			}
+		};
+
+		if let Some(reg) = reg {
+			return Ok((&s[1..], reg));
+		}
+	}
+
+	return err;
+}
+
+fn immediate<'a>(s: &'a [Token]) -> Result<'a, i16> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedImmediate(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	if let Token::Signed(imm) = s[0] {
+		return Ok((&s[1..], imm as i16));
+	}
+
+	return err;
+}
+
+fn punctuation<'a>(s: &'a [Token], punc: Punctuation) -> Result<'a, Punctuation> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedPunctuation(slice, punc));
+	if slice.is_none() {
+		return err;
+	}
+
+	if let Token::Punctuation(p) = s[0] {
+		if p == punc {
+			return Ok((&s[1..], punc));
+		} else {
+			return err;
+		}
+	}
+
+	return err;
+}
+
+fn comma<'a>(s: &'a [Token]) -> Result<'a, Punctuation> {
+	punctuation(s, Punctuation::Comma)
+}
+
+fn binop<'a>(s: &'a [Token]) -> Result<'a, BinOp> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedBinOp(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	let (s, iden) = identifier(s)?;
+	let op = match iden {
+		"add" => Some(BinOp::Add),
+		"sub" => Some(BinOp::Sub),
+
+		"mul" => Some(BinOp::Mul),
+		"div" => Some(BinOp::Div),
+		"mod" => Some(BinOp::Mod),
+
+		"and" => Some(BinOp::And),
+		"or" => Some(BinOp::Or),
+		"xor" => Some(BinOp::Xor),
+
+		"shl" => Some(BinOp::Shl),
+		"shr" => Some(BinOp::Shr),
+		"asl" => Some(BinOp::Asl),
+		"asr" => Some(BinOp::Asr),
+		"rol" => Some(BinOp::Rol),
+		"ror" => Some(BinOp::Ror),
+
+		"not" => Some(BinOp::Not),
+		"neg" => Some(BinOp::Neg),
+		"cmp" => Some(BinOp::Cmp),
+		_ => None,
+	};
+
+	if op.is_none() {
+		return err;
+	}
+
+	Ok((s, op.unwrap()))
+}
+
+fn rrr<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, op) = binop(s)?;
+	let (s, dest) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, lhs) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, rhs) = register(s)?;
+	Ok((s, Instruction::Rrr(rrr::Instruction {
+		op: op,
+		dest: dest,
+		lhs: lhs,
+		rhs: rhs,
+		shift: rrr::Shift {
+			kind: rrr::ShiftKind::Shl,
+			shift: 0,
+		}
+	})))
+}
+
+fn rri<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, op) = binop(s)?;
+	let (s, dest) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, src) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, imm) = immediate(s)?;
+	Ok((s, Instruction::Rri(rri::Instruction {
+		op: op,
+		cond: rri::Condition::Al,
+		dest: dest,
+		src: src,
+		imm: imm,
+	})))
+}
+
+fn instruction<'a>(s: &'a [Token]) -> Result<'a, Statement> {
+	let (s, instr) = alt((
+		rrr,
+		rri,
+	))(s)?;
+	Ok((s, Statement::Instruction(instr)))
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Statement {
+	Instruction(Instruction)
+}
+
+pub type StatementStream = Vec<Statement>;
+
+fn statement<'a>(s: &'a [Token]) -> Result<'a, Statement> {
+	instruction(s)
+}
+
+pub fn parse<'a>(s: &'a TokenStream<'a>) -> Result<'a, StatementStream> {
+	many0(statement)(&s)
+}
