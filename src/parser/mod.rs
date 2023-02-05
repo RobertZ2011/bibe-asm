@@ -267,21 +267,39 @@ fn rri<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	})))
 }
 
-fn mov_r<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
-	let (s, _) = string("mov")(s)?;
-	let (s, dest) = register(s)?;
-	let (s, _) = comma(s)?;
-	let (s, src) = register(s)?;
+fn jmp_r<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, _) = string("j")(s)?;
+	let (s, rs) = register(s)?;
 	return Ok((s, Instruction::Rrr(rrr::Instruction {
 		op: BinOp::Add,
-		dest: dest,
+		dest: Register::pc(),
 		lhs: Register::r0(),
-		rhs: src,
+		rhs: rs,
 		shift: rrr::Shift {
 			kind: rrr::ShiftKind::Shl,
 			shift: 0,
 		}
 	})))
+}
+
+fn jmp_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, _) = string("j")(s)?;
+	let (s, cond) = condition(s)?;
+	let (s, imm) = immediate(s)?;
+	return Ok((s, Instruction::Rri(rri::Instruction {
+		op: BinOp::Add,
+		cond: cond,
+		dest: Register::pc(),
+		src: Register::pc(),
+		imm: imm,
+	})))
+}
+
+fn jmp<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	alt((
+		jmp_i,
+		jmp_r,
+	))(s)
 }
 
 fn mov_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
@@ -296,6 +314,23 @@ fn mov_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 		dest: dest,
 		src: Register::r0(),
 		imm: imm,
+	})))
+}
+
+fn mov_r<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, _) = string("mov")(s)?;
+	let (s, dest) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, src) = register(s)?;
+	return Ok((s, Instruction::Rrr(rrr::Instruction {
+		op: BinOp::Add,
+		dest: dest,
+		lhs: Register::r0(),
+		rhs: src,
+		shift: rrr::Shift {
+			kind: rrr::ShiftKind::Shl,
+			shift: 0,
+		}
 	})))
 }
 
@@ -315,15 +350,16 @@ fn nop<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 
 fn mov<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	alt((
-		mov_r,
 		mov_i,
+		mov_r,
 	))(s)
 }
 
 fn alias<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	alt((
+		jmp,
 		mov,
-		nop
+		nop,
 	))(s)
 }
 
