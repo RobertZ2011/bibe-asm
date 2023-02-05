@@ -35,6 +35,7 @@ pub enum Error<'a> {
 	ExpectedImmediate(Option<&'a Token<'a>>),
 	ExpectedPunctuation(Option<&'a Token<'a>>, Punctuation),
 	ExpectedRegister(Option<&'a Token<'a>>),
+	ExpectedString(Option<&'a Token<'a>>, &'a str),
 
 	InvalidOp(&'a str),
 	ImmediateRange(i16),
@@ -187,6 +188,17 @@ fn binop<'a>(s: &'a [Token]) -> Result<'a, BinOp> {
 	Ok((s, op.unwrap()))
 }
 
+fn string<'a>(value: &'a str) -> impl Fn(&'a [Token]) -> Result<'a, &'a str> {
+	move |s: &'a [Token]| {
+		let (s, ident) = identifier(s)?;
+		if ident != value {
+			return error(s, Error::ExpectedString(Some(&s[0]), value));
+		}
+
+		Ok((s, ident))
+	}
+}
+
 fn rrr<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	let (s, op) = binop(s)?;
 	let (s, dest) = register(s)?;
@@ -222,8 +234,51 @@ fn rri<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	})))
 }
 
+fn mov_r<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, _) = string("mov")(s)?;
+	let (s, dest) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, src) = register(s)?;
+	return Ok((s, Instruction::Rrr(rrr::Instruction {
+		op: BinOp::Add,
+		dest: dest,
+		lhs: Register::r0(),
+		rhs: src,
+		shift: rrr::Shift {
+			kind: rrr::ShiftKind::Shl,
+			shift: 0,
+		}
+	})))
+}
+
+fn mov_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, _) = string("mov")(s)?;
+	let (s, dest) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, imm) = immediate(s)?;
+	return Ok((s, Instruction::Rri(rri::Instruction {
+		op: BinOp::Add,
+		cond: rri::Condition::Al,
+		dest: dest,
+		src: Register::r0(),
+		imm: imm,
+	})))
+}
+
+fn mov<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	alt((
+		mov_r,
+		mov_i,
+	))(s)
+}
+
+fn alias<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	mov(s)
+}
+
 fn instruction<'a>(s: &'a [Token]) -> Result<'a, Statement> {
 	let (s, instr) = alt((
+		alias, 
 		rrr,
 		rri,
 	))(s)?;
