@@ -265,6 +265,20 @@ fn mov_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	})))
 }
 
+fn nop<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, _) = string("nop")(s)?;
+	return Ok((s, Instruction::Rrr(rrr::Instruction {
+		op: BinOp::Add,
+		dest: Register::r0(),
+		lhs: Register::r0(),
+		rhs: Register::r0(),
+		shift: rrr::Shift {
+			kind: rrr::ShiftKind::Shl,
+			shift: 0,
+		}
+	})))
+}
+
 fn mov<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	alt((
 		mov_r,
@@ -273,7 +287,10 @@ fn mov<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 }
 
 fn alias<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
-	mov(s)
+	alt((
+		mov,
+		nop
+	))(s)
 }
 
 fn instruction<'a>(s: &'a [Token]) -> Result<'a, Statement> {
