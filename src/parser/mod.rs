@@ -6,7 +6,10 @@ pub use token::{
 
 use nom::{
 	branch::alt,
-	combinator::opt,
+	combinator::{
+		map,
+		opt,
+	},
 	Err as NomErr,
 	error::{
 		ErrorKind,
@@ -363,13 +366,13 @@ fn alias<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	))(s)
 }
 
-fn instruction<'a>(s: &'a [Token]) -> Result<'a, Statement> {
+pub fn instruction<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 	let (s, instr) = alt((
 		alias, 
 		rrr,
 		rri,
 	))(s)?;
-	Ok((s, Statement::Instruction(instr)))
+	Ok((s, instr))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -379,8 +382,8 @@ pub enum Statement {
 
 pub type StatementStream = Vec<Statement>;
 
-fn statement<'a>(s: &'a [Token]) -> Result<'a, Statement> {
-	instruction(s)
+pub fn statement<'a>(s: &'a [Token]) -> Result<'a, Statement> {
+	map(instruction, |i| Statement::Instruction(i))(s)
 }
 
 pub fn parse<'a>(s: &'a TokenStream<'a>) -> Result<'a, StatementStream> {
