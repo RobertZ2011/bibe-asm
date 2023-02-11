@@ -294,7 +294,7 @@ fn jmp_i<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 		cond: cond,
 		dest: Register::pc(),
 		src: Register::pc(),
-		imm: imm,
+		imm: 4 * imm,
 	})))
 }
 

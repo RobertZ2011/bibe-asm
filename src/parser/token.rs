@@ -9,7 +9,6 @@ use nom::{
 		u32,
 	},
 	combinator::map,
-	Finish,
 	IResult,
 	multi::many0,
 };
