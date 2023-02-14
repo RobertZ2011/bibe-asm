@@ -1,6 +1,7 @@
+/* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 mod token;
 pub use token::{
-	TokenStream,
+	Token,
 	tokenize
 };
 
@@ -19,9 +20,10 @@ use nom::{
 	multi::many0,
 };
 
-use crate::parser::token::{ 
+use crate::parser::token::{
+	Bracket,
 	Punctuation,
-	Token,
+	TokenStream,
 };
 
 use bibe_instr::{
@@ -30,14 +32,37 @@ use bibe_instr::{
 	rrr,
 	rri,
 	Instruction,
+	memory::{OpType as MemOpType, self},
+	Width,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct MemOperandRr {
+	rs: Register,
+	rq: Register,
+	shift: u8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct MemOperandRi {
+	rs: Register,
+	imm: i16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum MemOperand {
+	Ri(MemOperandRi),
+	Rr(MemOperandRr),
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Error<'a> {
 	ExpectedBinOp(Option<&'a Token<'a>>),
+	ExpectedBracket(Option<&'a Token<'a>>),
 	ExpectedCondition(Option<&'a Token<'a>>),
 	ExpectedIdentifer(Option<&'a Token<'a>>),
 	ExpectedImmediate(Option<&'a Token<'a>>),
+	ExpectedMemOp(Option<&'a Token<'a>>),
 	ExpectedPunctuation(Option<&'a Token<'a>>, Punctuation),
 	ExpectedRegister(Option<&'a Token<'a>>),
 	ExpectedString(Option<&'a Token<'a>>, &'a str),
@@ -85,6 +110,143 @@ fn identifier<'a>(s: &'a [Token<'a>]) -> Result<'a, &'a str> {
 	}
 
 	return err;
+}
+
+fn bracket<'a>(s: &'a [Token]) -> Result<'a, Bracket> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedBracket(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	if let Token::Bracket(b) = s[0] {
+		return Ok((&s[1..], b));
+	}
+
+	return err;
+}
+
+fn left_square_bracket<'a>(s: &'a [Token]) -> Result<'a, Bracket> {
+	let err = error(s, Error::ExpectedBracket(Some(&s[0])));
+	let (s, b) = bracket(s)?;
+
+	if b == Bracket::LeftSquare {
+		return Ok((s, b));
+	}
+
+	return err;
+}
+
+fn right_square_bracket<'a>(s: &'a [Token]) -> Result<'a, Bracket> {
+	let err = error(s, Error::ExpectedBracket(Some(&s[0])));
+	let (s, b) = bracket(s)?;
+
+	if b == Bracket::RightSquare {
+		return Ok((s, b));
+	}
+
+	return err;
+}
+
+fn mem_operand_rr<'a>(s: &'a [Token]) -> Result<'a, MemOperand> {
+	let (s, _) = left_square_bracket(s)?;
+	let (s, rs) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, rq) = register(s)?;
+	let (s, _) = right_square_bracket(s)?;
+
+	Ok((s, MemOperand::Rr(MemOperandRr {
+		rs: rs,
+		rq: rq,
+		shift: 0,
+	})))
+}
+
+fn mem_operand_ri<'a>(s: &'a [Token]) -> Result<'a, MemOperand> {
+	let (s, _) = left_square_bracket(s)?;
+	let (s, rs) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, imm) = immediate(s)?;
+	let (s, _) = right_square_bracket(s)?;
+
+	Ok((s, MemOperand::Ri(MemOperandRi {
+		rs: rs,
+		imm: imm,
+	})))
+}
+
+fn mem_operand<'a>(s: &'a [Token]) -> Result<'a, MemOperand> {
+	alt((
+		mem_operand_rr,
+		mem_operand_ri,
+	))(s)
+}
+
+fn mem_op<'a>(s: &'a [Token]) -> Result<'a, (MemOpType, Width)> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedMemOp(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	let (s, iden) = identifier(s)?;
+	let op = match iden {
+		"ldrb" => Some((MemOpType::Load, Width::Byte)),
+		"ldrs" => Some((MemOpType::Load, Width::Short)),
+		"ldrw" => Some((MemOpType::Load, Width::Word)),
+		
+		"strb" => Some((MemOpType::Store, Width::Byte)),
+		"strs" => Some((MemOpType::Store, Width::Short)),
+		"strw" => Some((MemOpType::Store, Width::Word)),
+		_ => None,
+	};
+
+	if op.is_none() {
+		return err;
+	}
+
+	Ok((s, op.unwrap()))
+}
+
+fn memory<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
+	let (s, (op, width)) = mem_op(s)?;
+
+	let (s, rd, operand) = match op {
+		MemOpType::Load => {
+			let (s, rd) = register(s)?;
+			let (s, _) = comma(s)?;
+			let (s, operand) = mem_operand(s)?;
+			(s, rd, operand)
+		},
+		MemOpType::Store => {
+			let (s, operand) = mem_operand(s)?;
+			let (s, _) = comma(s)?;
+			let (s, rd) = register(s)?;
+			(s, rd, operand)
+		},
+	};
+
+	let instr = match operand {
+		MemOperand::Ri(MemOperandRi { rs, imm }) => {
+			Instruction::Memory(memory::Instruction::Ri(memory::ri::Instruction {
+				op: (op, width),
+				rd: rd,
+				rs: rs,
+				imm: imm,
+			}))
+		},
+		MemOperand::Rr(MemOperandRr { rs, rq, shift }) => {
+			Instruction::Memory(memory::Instruction::Rr(memory::rr::Instruction {
+				op: (op, width),
+				rd: rd,
+				rs: rs,
+				rq: rq,
+				shift: shift,
+			}))
+		},
+	};
+
+	Ok((s, instr))
 }
 
 fn register<'a>(s: &'a [Token]) -> Result<'a, Register> {
@@ -201,7 +363,7 @@ fn string<'a>(value: &'a str) -> impl Fn(&'a [Token]) -> Result<'a, &'a str> {
 	move |s: &'a [Token]| {
 		let (s, ident) = identifier(s)?;
 		if ident != value {
-			return error(s, Error::ExpectedString(Some(&s[0]), value));
+			return error(s, Error::ExpectedString(slice_as_option(s), value));
 		}
 
 		Ok((s, ident))
@@ -367,12 +529,12 @@ fn alias<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
 }
 
 pub fn instruction<'a>(s: &'a [Token]) -> Result<'a, Instruction> {
-	let (s, instr) = alt((
+	alt((
 		alias, 
 		rrr,
 		rri,
-	))(s)?;
-	Ok((s, instr))
+		memory,
+	))(s)
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1,3 +1,4 @@
+/* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 use nom::{
 	branch::alt,
 	character::complete::{
@@ -27,9 +28,16 @@ pub enum Punctuation {
 	Comma
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Bracket {
+	LeftSquare,
+	RightSquare,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'a> {
 	BinOp(BinOp),
+	Bracket(Bracket),
 	Identifier(&'a str),
 	MemOp(MemOpType, Width),
 	Punctuation(Punctuation),
@@ -102,6 +110,13 @@ fn mem_op(s: &str) -> IResult<&str, Token> {
 	Ok((s, Token::MemOp(op, width)))
 }
 
+fn bracket(s: &str) -> IResult<&str, Token> {
+	alt((
+		map(char('['), |_| Token::Bracket(Bracket::LeftSquare)),
+		map(char(']'), |_| Token::Bracket(Bracket::RightSquare)),
+	))(s)
+}
+
 fn identifier(s: &str) -> IResult<&str, Token> {
 	let (s, iden) = name(s)?;
 	Ok((s, Token::Identifier(iden)))
@@ -131,6 +146,7 @@ fn punctuation(s: &str) -> IResult<&str, Token> {
 fn token(s: &str) -> IResult<&str, Token> {
 	let (s, _) = multispace0(s)?;
 	let (s, t) = alt((
+		bracket,
 		identifier,
 		constant,
 		punctuation,
