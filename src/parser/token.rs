@@ -15,6 +15,12 @@ use nom::{
 
 use str_concat::concat;
 
+use bibe_instr::{
+	BinOp,
+	memory::OpType as MemOpType,
+	Width,
+};
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Punctuation {
 	Period,
@@ -23,7 +29,9 @@ pub enum Punctuation {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'a> {
+	BinOp(BinOp),
 	Identifier(&'a str),
+	MemOp(MemOpType, Width),
 	Punctuation(Punctuation),
 	Signed(i32),
 	Unsigned(u32),
@@ -31,10 +39,71 @@ pub enum Token<'a> {
 
 pub type TokenStream<'a> = Vec<Token<'a>>;
 
-fn identifier(s: &str) -> IResult<&str, Token> {
+fn name(s: &str) -> IResult<&str, &str> {
 	let (s, start) = alpha1(s)?;
 	let (s, end) = alphanumeric0(s)?;
-	let iden = unsafe { concat(start, end).unwrap() };
+	let n = unsafe { concat(start, end).unwrap() };
+	Ok((s, n))
+}
+
+fn bin_op(s: &str) -> IResult<&str, Token> {
+	let (s, n) = name(s)?;
+	let op = match n {
+		"add" => Some(BinOp::Add),
+		"sub" => Some(BinOp::Sub),
+
+		"mul" => Some(BinOp::Mul),
+		"div" => Some(BinOp::Div),
+		"mod" => Some(BinOp::Mod),
+
+		"and" => Some(BinOp::And),
+		"or" => Some(BinOp::Or),
+		"xor" => Some(BinOp::Xor),
+
+		"shl" => Some(BinOp::Shl),
+		"shr" => Some(BinOp::Shr),
+		"asl" => Some(BinOp::Asl),
+		"asr" => Some(BinOp::Asr),
+		"rol" => Some(BinOp::Rol),
+		"ror" => Some(BinOp::Ror),
+
+		"not" => Some(BinOp::Not),
+		"neg" => Some(BinOp::Neg),
+		"cmp" => Some(BinOp::Cmp),
+		_ => None,
+	};
+
+	if op.is_none() {
+
+	}
+
+	Ok((s, Token::BinOp(op.unwrap())))
+}
+
+fn mem_op(s: &str) -> IResult<&str, Token> {
+	let (s, n) = name(s)?;
+	let op = match n {
+		"ldrb" => Some((MemOpType::Load, Width::Byte)),
+		"ldrs" => Some((MemOpType::Load, Width::Short)),
+		"ldrw" => Some((MemOpType::Load, Width::Word)),
+
+		"strb" => Some((MemOpType::Store, Width::Byte)),
+		"strs" => Some((MemOpType::Store, Width::Short)),
+		"strw" => Some((MemOpType::Load, Width::Word)),
+
+		_ => None,
+	};
+
+	if op.is_none() {
+
+	}
+
+	let (op, width) = op.unwrap();
+	Ok((s, Token::MemOp(op, width)))
+}
+
+fn identifier(s: &str) -> IResult<&str, Token> {
+	let (s, iden) = name(s)?;
 	Ok((s, Token::Identifier(iden)))
 }
 
