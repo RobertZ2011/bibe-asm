@@ -2,6 +2,9 @@ use bibe_instr as isa;
 
 use crate::parser::string_table::StringID;
 
+pub mod emitter;
+pub mod object;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Immediate {
 	Constant(i64),
