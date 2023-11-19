@@ -10,3 +10,4 @@ bibe-instr = { path = "../bibe-instr" }
 num-traits = "0.2"
 nom = "7.1.3"
 str-concat = "0.2.0"
+lazy_static = "1.4.0"
