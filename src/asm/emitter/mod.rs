@@ -10,7 +10,7 @@ use std::fs::File;
 use log::debug;
 
 mod annotated;
-//mod image;
+mod bin;
 //pub mod hex;
 
 #[derive(Clone, Copy, Debug)]
@@ -18,7 +18,7 @@ pub enum Error {
 	UndefinedSymbol(StringID)
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait Emitter {
 	fn emit_isa_instruction(&mut self, object: &Object, addr: u64, instr: &isa::Instruction) -> Result<()>;
@@ -94,7 +94,7 @@ pub trait Emitter {
 pub fn create(name: &str, file: File) -> Option<Box<dyn Emitter>> {
 	match name {
 		"annotated" => annotated::create(file),
-
+		"bin" => bin::create(file),
 		_ => None,
 	}
 }
