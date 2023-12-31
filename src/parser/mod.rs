@@ -348,7 +348,7 @@ fn jmp_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		dest: Register::pc(),
 		lhs: Register::r0(),
 		rhs: rs,
-		shift: isa::rrr::Shift::default(),
+		shift: isa::Shift::default(),
 	})))
 }
 
@@ -401,7 +401,7 @@ fn mov_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		dest: dest,
 		lhs: Register::r0(),
 		rhs: src,
-		shift: isa::rrr::Shift::default(),
+		shift: isa::Shift::default(),
 	})))
 }
 
@@ -412,7 +412,7 @@ fn nop<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		dest: Register::r0(),
 		lhs: Register::r0(),
 		rhs: Register::r0(),
-		shift: isa::rrr::Shift::default(),
+		shift: isa::Shift::default(),
 	})))
 }
 
@@ -448,7 +448,7 @@ fn rrr<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 			dest: rd,
 			lhs: rs,
 			rhs: rq,
-			shift: isa::rrr::Shift::default(),
+			shift: isa::Shift::default(),
 		}
 	)))
 }

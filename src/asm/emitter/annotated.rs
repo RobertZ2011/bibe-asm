@@ -1,18 +1,16 @@
-use std::fs::File;
-use std::io::Write;
-
 use bibe_instr as isa;
 use isa::Encode;
 use crate::asm::object::Object;
 use crate::asm::emitter::{
 	Emitter,
+	EmitterTarget,
 	Result
 };
 use crate::asm as asm;
 
 use log::debug;
 
-pub struct Annotated(File);
+pub struct Annotated(Box<dyn EmitterTarget>);
 
 impl Emitter for Annotated {
 	fn emit_isa_instruction(&mut self, _object: &Object, addr: u64, instr: &isa::Instruction) -> Result<()> {
@@ -34,6 +32,6 @@ impl Emitter for Annotated {
 	}
 }
 
-pub fn create(file: File) -> Option<Box<dyn Emitter>> {
-	Some(Box::new(Annotated(file)))
+pub fn create(target: Box<dyn EmitterTarget>) -> Option<Box<dyn Emitter>> {
+	Some(Box::new(Annotated(target)))
 }

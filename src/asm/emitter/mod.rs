@@ -5,13 +5,16 @@ use bibe_instr as isa;
 use crate::asm as asm;
 
 use std::fs::File;
-
+use std::io::{
+	Seek,
+	Write
+};
 
 use log::debug;
 
 mod annotated;
 mod bin;
-//pub mod hex;
+mod hex;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Error {
@@ -19,6 +22,10 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub trait EmitterTarget: Seek + Write {}
+
+impl EmitterTarget for File {}
 
 pub trait Emitter {
 	fn emit_isa_instruction(&mut self, object: &Object, addr: u64, instr: &isa::Instruction) -> Result<()>;
@@ -91,10 +98,11 @@ pub trait Emitter {
 	}
 }
 
-pub fn create(name: &str, file: File) -> Option<Box<dyn Emitter>> {
+pub fn create(name: &str, target: Box<dyn EmitterTarget>) -> Option<Box<dyn Emitter>> {
 	match name {
-		"annotated" => annotated::create(file),
-		"bin" => bin::create(file),
+		"annotated" => annotated::create(target),
+		"bin" => bin::create(target),
+		"hex" => hex::create(target),
 		_ => None,
 	}
 }

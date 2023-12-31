@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io::{
 	Seek,
 	SeekFrom,
@@ -16,10 +15,11 @@ use crate::asm::{
 };
 use crate::asm::emitter::{
 	Emitter,
+	EmitterTarget,
 	Result,
 };
 
-pub struct Bin(File);
+pub struct Bin(Box<dyn EmitterTarget>);
 
 impl Emitter for Bin {
 	fn emit_isa_instruction(&mut self, _object: &Object, addr: u64, instr: &isa::Instruction) -> Result<()> {
@@ -69,6 +69,6 @@ impl Emitter for Bin {
 	}
 }
 
-pub fn create(file: File) -> Option<Box<dyn Emitter>> {
-	Some(Box::new(Bin(file)))
+pub fn create(target: Box<dyn EmitterTarget>) -> Option<Box<dyn Emitter>> {
+	Some(Box::new(Bin(target)))
 }
