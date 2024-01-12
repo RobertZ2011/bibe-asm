@@ -65,7 +65,8 @@ pub trait Emitter {
 					src: rri_asm.src,
 					imm: imm << rri_asm.imm_shl,
 				}))
-			}
+			},
+			asm::Instruction::Csr(csr) => Ok(isa::Instruction::Csr(*csr)),
 		}
 	}
 

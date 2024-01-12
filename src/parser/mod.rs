@@ -1,5 +1,6 @@
 /* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 mod token;
+use isa::csr::Operation;
 pub use token::{
 	Token,
 	tokenize
@@ -59,6 +60,7 @@ enum MemOperand {
 #[derive(Debug, PartialEq)]
 pub enum Error<'a> {
 	ExpectedBinOp(Option<&'a Token<'a>>),
+	ExpectedCsrOp(Option<&'a Token<'a>>),
 	ExpectedBracket(Option<&'a Token<'a>>),
 	ExpectedCondition(Option<&'a Token<'a>>),
 	ExpectedName(Option<&'a Token<'a>>),
@@ -477,11 +479,64 @@ fn rri<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	)))
 }
 
+fn csrop<'a>(s: &'a [Token]) -> Result<'a, isa::csr::Operation> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedCsrOp(slice));
+
+	let name = name(s);
+	if name.is_err() {
+		return err;
+	}
+	let (s, name) = name.unwrap();
+
+	let op = match name {
+		"csrb" => Some(Operation::ReadB),
+		"csrs" => Some(Operation::ReadS),
+		"csrw" => Some(Operation::ReadW),
+
+		"cswb" => Some(Operation::WriteB),
+		"csws" => Some(Operation::WriteS),
+		"csww" => Some(Operation::WriteW),
+
+		_ => None,
+	};
+
+	if op.is_none() {
+		return err;
+	}
+
+	Ok((s, op.unwrap()))
+}
+
+fn csr<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	let (s, op) = csrop(s)?;
+
+	let (s, rd, imm) = if op.is_read() {
+		let (s, rd) = register(s)?;
+		let (s, _) = comma(s)?;
+		let (s, imm) = constant(s)?;
+		(s, rd, imm)
+
+	} else {
+		let (s, imm) = constant(s)?;
+		let (s, _) = comma(s)?;
+		let (s, rd) = register(s)?;
+		(s, rd, imm)
+	};
+
+	Ok((s, asm::Instruction::Csr(isa::csr::Instruction {
+		op: op, 
+		reg: rd, 
+		imm: imm as u32
+	})))
+}
+
 pub fn instruction<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	alt((
 		alias, 
 		rrr,
 		rri,
+		csr,
 	))(s)
 }
 

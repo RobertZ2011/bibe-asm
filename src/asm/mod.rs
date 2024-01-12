@@ -50,6 +50,7 @@ pub enum Instruction {
 	Memory(isa::memory::Instruction),
 	Rrr(isa::rrr::Instruction),
 	Rri(rri::Instruction),
+	Csr(isa::csr::Instruction),
 }
 
 impl Instruction {
