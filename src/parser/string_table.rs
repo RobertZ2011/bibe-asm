@@ -35,8 +35,8 @@ impl StringTable {
 		id
 	}
 
-	pub fn lookup(&self, s: &str) -> Option<StringID> {
-		self.strings.get(s).map(|x| *x)
+	pub fn lookup(&self, id: StringID) -> Option<&String> {
+		self.ids.get(&id)
 	}
 }
 
@@ -49,9 +49,9 @@ pub fn insert(s: &str) -> StringID {
 	lock.insert(s)
 }
 
-pub fn lookup(s: &str) -> Option<StringID> {
+pub fn lookup(id: StringID) -> Option<String> {
 	let lock = STRING_TABLE.lock().unwrap();
-	lock.lookup(s)
+	lock.lookup(id).map(|x| x.clone())
 }
 
 pub fn dump() {

@@ -1,6 +1,8 @@
 /* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 mod token;
-use isa::csr::Operation;
+use isa::Shift;
+use isa::{csr::Operation, Width};
+use isa::memory::OpType as MemOp;
 pub use token::{
 	Token,
 	tokenize
@@ -61,11 +63,12 @@ enum MemOperand {
 pub enum Error<'a> {
 	ExpectedBinOp(Option<&'a Token<'a>>),
 	ExpectedCsrOp(Option<&'a Token<'a>>),
+	ExpectedMemOp(Option<&'a Token<'a>>),
 	ExpectedBracket(Option<&'a Token<'a>>),
 	ExpectedCondition(Option<&'a Token<'a>>),
 	ExpectedName(Option<&'a Token<'a>>),
 	ExpectedConstant(Option<&'a Token<'a>>),
-	ExpectedMemOp(Option<&'a Token<'a>>),
+	ExpectedStringConstant(Option<&'a Token<'a>>),
 	ExpectedPunctuation(Option<&'a Token<'a>>, Punctuation),
 	ExpectedRegister(Option<&'a Token<'a>>),
 	ExpectedString(Option<&'a Token<'a>>, &'a str),
@@ -182,6 +185,20 @@ fn right_square_bracket<'a>(s: &'a [Token]) -> Result<'a, Bracket> {
 
 	if b == Bracket::RightSquare {
 		return Ok((s, b));
+	}
+
+	err
+}
+
+fn string_constant<'a>(s: &'a [Token]) -> Result<'a, String> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedStringConstant(slice));
+	if slice.is_none() {
+		return err;
+	}
+
+	if let Token::StringConstant(string) = &s[0] {
+		return Ok((&s[1..], string.clone()));
 	}
 
 	err
@@ -372,8 +389,8 @@ fn jmp_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 
 fn jmp<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	alt((
-		jmp_i,
 		jmp_r,
+		jmp_i,
 	))(s)
 }
 
@@ -387,7 +404,7 @@ fn mov_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		op: BinOp::Add,
 		cond: cond,
 		dest: dest,
-		src: Register::r0(),
+		src: if imm.pc_rel().is_none() { Register::r0() } else { Register::pc() },
 		imm: imm,
 		imm_shl: 0,
 	})))
@@ -531,12 +548,108 @@ fn csr<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	})))
 }
 
+fn memop<'a>(s: &'a [Token]) -> Result<'a, (MemOp, Width)> {
+	let slice = slice_as_option(s);
+	let err = error(s, Error::ExpectedMemOp(slice));
+
+	let name = name(s);
+	if name.is_err() {
+		return err;
+	}
+	let (s, name) = name.unwrap();
+
+	let op = match name {
+		"ldrb" => Some((MemOp::Load, Width::Byte)),
+		"ldrs" => Some((MemOp::Load, Width::Short)),
+		"ldrw" => Some((MemOp::Load, Width::Word)),
+
+		"strb" => Some((MemOp::Store, Width::Byte)),
+		"strs" => Some((MemOp::Store, Width::Short)),
+		"strw" => Some((MemOp::Store, Width::Word)),
+
+		_ => None,
+	};
+
+	if op.is_none() {
+		return err;
+	}
+
+	Ok((s, op.unwrap()))
+}
+
+fn mem_operand<'a>(s: &'a [Token]) -> Result<'a, MemOperand> {
+	let (s, _) = left_square_bracket(s)?;
+	let (s, rs) = register(s)?;
+	let (s, offset) = opt(comma)(s)?;
+
+	let (s, operand) = if offset.is_none() {
+		(s, MemOperand::Ri(MemOperandRi {
+			rs: rs,
+			imm: 0 as i16,
+		}))
+	} else if let Ok((s, rq)) = register(s) {
+		(s, MemOperand::Rr(MemOperandRr {
+			rs: rs,
+			rq: rq,
+			shift: 0,
+		}))
+	} else {
+		let (s, imm) = constant(s)?;
+		(s, MemOperand::Ri(MemOperandRi {
+			rs: rs,
+			imm: imm as i16,
+		}))
+	};
+
+	let (s, _) = right_square_bracket(s)?;
+	Ok((s, operand))
+}
+
+pub fn memory<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	let (s, (op, width)) = memop(s)?;
+
+	let (s, reg, operand) = if op == MemOp::Load {
+		let (s, reg) = register(s)?;
+		let (s, _) = comma(s)?;
+		let (s, operand) = mem_operand(s)?;
+		(s, reg, operand)
+	} else {
+		let (s, operand) = mem_operand(s)?;
+		let (s, _) = comma(s)?;
+		let (s, reg) = register(s)?;
+		(s, reg, operand)
+	};
+
+	let instr = match operand {
+		MemOperand::Rr(rr) => {
+			isa::memory::Instruction::Rr(isa::memory::rr::Instruction {
+				op: (op, width),
+				rd: reg,
+				rs: rr.rs,
+				rq: rr.rq,
+				shift: Shift::default(),
+			})
+		},
+		MemOperand::Ri(ri) => {
+			isa::memory::Instruction::Ri(isa::memory::ri::Instruction {
+				op: (op, width),
+				rd: reg,
+				rs: ri.rs,
+				imm: ri.imm,
+			})
+		}
+	};
+
+	Ok((s, asm::Instruction::Memory(instr)))
+}
+
 pub fn instruction<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	alt((
 		alias, 
 		rrr,
 		rri,
 		csr,
+		memory,
 	))(s)
 }
 
@@ -567,30 +680,40 @@ fn label<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
 
 fn byte<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
 	let (s, _) = dot("byte")(s)?;
-	let (s, id) = opt(identifier)(s)?;
 	let (s, value) = constant(s)?;
-	Ok((s, asm::Directive::Byte(id, value as u8)))
+	Ok((s, asm::Directive::Byte(value as u8)))
 }
 
 fn short<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
 	let (s, _) = dot("short")(s)?;
-	let (s, id) = opt(identifier)(s)?;
 	let (s, value) = constant(s)?;
-	Ok((s, asm::Directive::Short(id, value as u16)))
+	Ok((s, asm::Directive::Short(value as u16)))
 }
 
 fn word<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
 	let (s, _) = dot("word")(s)?;
-	let (s, id) = opt(identifier)(s)?;
 	let (s, value) = constant(s)?;
-	Ok((s, asm::Directive::Word(id, value as u32)))
+	Ok((s, asm::Directive::Word(value as u32)))
 }
 
 fn quad<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
 	let (s, _) = dot("quad")(s)?;
-	let (s, id) = opt(identifier)(s)?;
 	let (s, value) = constant(s)?;
-	Ok((s, asm::Directive::Quad(id, value as u64)))
+	Ok((s, asm::Directive::Quad(value as u64)))
+}
+
+fn ascii<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
+	let (s, _) = dot("ascii")(s)?;
+	let (s, string) = string_constant(s)?;
+	Ok((s, asm::Directive::Bytes(string.into_bytes())))
+}
+
+fn asciiz<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
+	let (s, _) = dot("asciiz")(s)?;
+	let (s, string) = string_constant(s)?;
+	let mut bytes = string.into_bytes();
+	bytes.push(0);
+	Ok((s, asm::Directive::Bytes(bytes)))
 }
 
 pub fn directive<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
@@ -602,7 +725,10 @@ pub fn directive<'a>(s: &'a [Token]) -> Result<'a, asm::Directive> {
 		byte,
 		short,
 		word,
-		quad
+		quad,
+
+		ascii,
+		asciiz,
 	))(s)
 }
 

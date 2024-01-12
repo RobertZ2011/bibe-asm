@@ -80,7 +80,7 @@ pub trait Emitter {
 					continue;
 				}
 
-				let (offset, statement) = statement.unwrap();
+				let (offset, statement) = statement.clone().unwrap();
 				assert!(statement.size_of() != 0);
 
 				let addr = page_addr + offset + skip_offset;

@@ -40,18 +40,18 @@ impl Emitter for Bin {
 		// TODO: handle endianess
 		use asm::Directive;
 		match directive {
-			Directive::Byte(_, v) => self.0.write(&[*v]),
-			Directive::Short(_, v) => self.0.write(&[
+			Directive::Byte(v) => self.0.write(&[*v]),
+			Directive::Short(v) => self.0.write(&[
 				(v & 0xff) as u8, 
 				((v >> 8) & 0xff) as u8
 			]),
-			Directive::Word(_, v) => self.0.write(&[
+			Directive::Word(v) => self.0.write(&[
 				(v & 0xff) as u8, 
 				((v >> 8) & 0xff) as u8,
 				((v >> 16) & 0xff) as u8,
 				((v >> 24) & 0xff) as u8
 			]),
-			Directive::Quad(_, v) => self.0.write(&[
+			Directive::Quad(v) => self.0.write(&[
 				(v & 0xff) as u8, 
 				((v >> 8) & 0xff) as u8,
 				((v >> 16) & 0xff) as u8,
@@ -61,6 +61,8 @@ impl Emitter for Bin {
 				((v >> 48) & 0xff) as u8,
 				((v >> 56) & 0xff) as u8,
 			]),
+
+			Directive::Bytes(v) => self.0.write(&v),
 
 			_ => unimplemented!()
 		}.unwrap();

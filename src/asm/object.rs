@@ -11,14 +11,14 @@ const PAGE_LEN: u64 = 4096;
 
 pub struct Page {
 	byte_offset: u64,
-	pub statements: [Option<(u64, asm::Statement)>; PAGE_LEN as usize]
+	pub statements: Vec<Option<(u64, asm::Statement)>>
 }
 
 impl Page {
 	pub fn new() -> Page {
 		Page {
 			byte_offset: 0,
-			statements: [None; PAGE_LEN as usize]
+			statements: vec![None; PAGE_LEN as usize]
 		}
 	}
 }
@@ -87,10 +87,7 @@ impl Object {
 				Directive::Align(align) => self.addr = Self::align_addr(self.addr, *align),
 				Directive::Label(id) => self.insert_symbol(Some(*id), self.addr),
 
-				Directive::Byte(id, value) => self.insert_symbol(*id, *value as u64),
-				Directive::Short(id, value) => self.insert_symbol(*id, *value as u64),
-				Directive::Word(id, value) => self.insert_symbol(*id, *value as u64),
-				Directive::Quad(id, value) => self.insert_symbol(*id, *value as u64),
+				_ => (),
 			}
 		}
 
@@ -99,7 +96,7 @@ impl Object {
 		}
 
 		let (page, index) = self.get_page(self.addr);
-		page.statements[index as usize] = Some((page.byte_offset, *statement));
+		page.statements[index as usize] = Some((page.byte_offset, statement.clone()));
 		page.byte_offset += statement.size_of();
 		self.addr += statement.size_of();
 	}

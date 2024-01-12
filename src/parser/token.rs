@@ -6,7 +6,7 @@ use nom::{
 		alphanumeric0,
 		char,
 		i64,
-		multispace0,
+		multispace0, anychar,
 	},
 	combinator::map,
 	IResult,
@@ -32,6 +32,7 @@ pub enum Bracket {
 pub enum Token<'a> {
 	Bracket(Bracket),
 	String(&'a str),
+	StringConstant(String),
 	Punctuation(Punctuation),
 	Constant(i64),
 }
@@ -43,6 +44,37 @@ fn string(s: &str) -> IResult<&str, Token> {
 	let (s, end) = alphanumeric0(s)?;
 	let n = unsafe { concat(start, end).unwrap() };
 	Ok((s, Token::String(n)))
+}
+
+fn string_constant(s: &str) -> IResult<&str, Token> {
+	let (mut s, _) = char('"')(s)?;
+	let mut res = String::with_capacity(256);
+
+	loop {
+		let (ns, c) = anychar(s)?;
+		s = ns;
+
+		let (_, c) = match c {
+			'"' => return Ok((s, Token::StringConstant(res))),
+			'\\' => {
+				let (s, escaped) = anychar(s)?;
+				let c = match escaped {
+					'0' => '\0',
+					't' => '\t',
+					'n' => '\n',
+					'\\' => '\\',
+					'"' => '"',
+					_ => todo!(),
+				};
+
+				(s, c)
+			},
+			_ => (s, c),
+		};
+
+		res.push(c);
+		s = ns;
+	}
 }
 
 fn bracket(s: &str) -> IResult<&str, Token> {
@@ -71,6 +103,7 @@ fn token(s: &str) -> IResult<&str, Token> {
 	let (s, t) = alt((
 		bracket,
 		string,
+		string_constant,
 		constant,
 		punctuation,
 	))(s)?;

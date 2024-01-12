@@ -59,17 +59,19 @@ impl Instruction {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Directive {
 	Label(StringID),
 
 	Origin(u64),
 	Align(u64),
 
-	Byte(Option<StringID>, u8),
-	Short(Option<StringID>, u16),
-	Word(Option<StringID>, u32),
-	Quad(Option<StringID>, u64),
+	Byte(u8),
+	Short(u16),
+	Word(u32),
+	Quad(u64),
+
+	Bytes(Vec<u8>),
 }
 
 impl Directive {
@@ -84,11 +86,13 @@ impl Directive {
 			Directive::Short(..) => 2,
 			Directive::Word(..) => 4,
 			Directive::Quad(..) => 8,
+
+			Directive::Bytes(v) => v.len() as u64,
 		}
 	}
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
 	Instruction(Instruction),
 	Directive(Directive),
