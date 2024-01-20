@@ -313,7 +313,9 @@ fn binop<'a>(s: &'a [Token]) -> Result<'a, BinOp> {
 
 		"not" => Some(BinOp::Not),
 		"neg" => Some(BinOp::Neg),
-		"cmp" => Some(BinOp::Cmp),
+
+		"addcc" => Some(BinOp::Addcc),
+		"subcc" => Some(BinOp::Subcc),
 
 		_ => None,
 	};
@@ -331,7 +333,7 @@ fn condition<'a>(s: &'a [Token]) -> Result<'a, Condition> {
 
 	let (s, p) = opt(period)(s)?;
 	if p.is_none() {
-		return Ok((s, Condition::Al));
+		return Ok((s, Condition::Always));
 	}
 
 	let name = name(s);
@@ -341,14 +343,14 @@ fn condition<'a>(s: &'a [Token]) -> Result<'a, Condition> {
 	let (s, name) = name.unwrap();
 
 	let cond = match name {
-		"al" => Some(Condition::Al),
-		"eq" => Some(Condition::Eq),
-		"ne" => Some(Condition::Ne),
-		"gt" => Some(Condition::Gt),
-		"ge" => Some(Condition::Ge),
-		"lt" => Some(Condition::Lt),
-		"le" => Some(Condition::Le),
-		"nv" => Some(Condition::Nv),
+		"al" => Some(Condition::Always),
+		"v" => Some(Condition::Overflow),
+		"c" => Some(Condition::Carry),
+		"z" | "eq" => Some(Condition::Zero),
+		"n" | "lt" => Some(Condition::Negative),
+		"nz" | "ne" => Some(Condition::NotZero),
+		"nn" | "ge" => Some(Condition::NotNegative),
+		"gt" => Some(Condition::GreaterThan),
 		_ => None
 	};
 
@@ -442,11 +444,49 @@ fn mov<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	))(s)
 }
 
+fn cmp_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	let (s, _) = string("cmp")(s)?;
+	let (s, cond) = condition(s)?;
+	let (s, rs) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, imm) = immediate(s)?;
+	Ok((s, asm::Instruction::Rri(asm::rri::Instruction {
+		op: BinOp::Subcc,
+		cond: cond,
+		dest: Register::r0(),
+		src: rs,
+		imm: imm,
+		imm_shl: 0,
+	})))
+}
+
+fn cmp_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	let (s, _) = string("cmp")(s)?;
+	let (s, rs) = register(s)?;
+	let (s, _) = comma(s)?;
+	let (s, rq) = register(s)?;
+	Ok((s, asm::Instruction::Rrr(isa::rrr::Instruction {
+		op: BinOp::Subcc,
+		dest: Register::r0(),
+		lhs: rs,
+		rhs: rq,
+		shift: Shift::default(),
+	})))
+}
+
+fn cmp<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	alt((
+		cmp_r,
+		cmp_i,
+	))(s)
+}
+
 fn alias<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	alt((
 		jmp,
 		mov,
 		nop,
+		cmp,
 	))(s)
 }
 
