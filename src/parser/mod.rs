@@ -1,8 +1,6 @@
 /* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 mod token;
-use isa::Shift;
-use isa::{csr::Operation, Width};
-use isa::memory::OpType as MemOp;
+use isa::{Shift, LoadStore, LoadStoreOp, Width};
 pub use token::{
 	Token,
 	tokenize
@@ -361,8 +359,8 @@ fn condition<'a>(s: &'a [Token]) -> Result<'a, Condition> {
 	Ok((s, cond.unwrap()))
 }
 
-fn jmp_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	let (s, _) = string("j")(s)?;
+fn branch_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	let (s, _) = string("b")(s)?;
 	let (s, rs) = register(s)?;
 	Ok((s, asm::Instruction::Rrr(isa::rrr::Instruction {
 		op: BinOp::Add,
@@ -373,8 +371,8 @@ fn jmp_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	})))
 }
 
-fn jmp_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	let (s, _) = string("j")(s)?;
+fn branch_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+	let (s, _) = string("b")(s)?;
 	let (s, cond) = condition(s)?;
 	let (s, imm) = immediate(s)?;
 
@@ -383,16 +381,16 @@ fn jmp_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		cond: cond,
 		dest: Register::pc(),
 		src: Register::pc(),
-		imm: imm,
-		// Constants represent a jump by x instructions, multiply by four
-		imm_shl: if imm.constant().is_some() { 2 } else { 0 },
+		imm: if imm.constant().is_some() {
+			asm::Immediate::Constant((4 * imm.constant().unwrap()) as i64) 
+		} else { imm }
 	})))
 }
 
-fn jmp<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
+fn branch<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	alt((
-		jmp_r,
-		jmp_i,
+		branch_r,
+		branch_i,
 	))(s)
 }
 
@@ -408,7 +406,6 @@ fn mov_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		dest: dest,
 		src: if imm.pc_rel().is_none() { Register::r0() } else { Register::pc() },
 		imm: imm,
-		imm_shl: 0,
 	})))
 }
 
@@ -456,7 +453,6 @@ fn cmp_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		dest: Register::r0(),
 		src: rs,
 		imm: imm,
-		imm_shl: 0,
 	})))
 }
 
@@ -483,7 +479,7 @@ fn cmp<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 
 fn alias<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	alt((
-		jmp,
+		branch,
 		mov,
 		nop,
 		cmp,
@@ -531,12 +527,11 @@ fn rri<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 			dest: rd,
 			src: rs,
 			imm: imm,
-			imm_shl: 0,
 		}
 	)))
 }
 
-fn csrop<'a>(s: &'a [Token]) -> Result<'a, isa::csr::Operation> {
+fn csrop<'a>(s: &'a [Token]) -> Result<'a, LoadStoreOp> {
 	let slice = slice_as_option(s);
 	let err = error(s, Error::ExpectedCsrOp(slice));
 
@@ -547,13 +542,13 @@ fn csrop<'a>(s: &'a [Token]) -> Result<'a, isa::csr::Operation> {
 	let (s, name) = name.unwrap();
 
 	let op = match name {
-		"csrb" => Some(Operation::ReadB),
-		"csrs" => Some(Operation::ReadS),
-		"csrw" => Some(Operation::ReadW),
+		"csrb" => Some((LoadStore::Load, Width::Byte)),
+		"csrs" => Some((LoadStore::Load, Width::Short)),
+		"csrw" => Some((LoadStore::Load, Width::Word)),
 
-		"cswb" => Some(Operation::WriteB),
-		"csws" => Some(Operation::WriteS),
-		"csww" => Some(Operation::WriteW),
+		"cswb" => Some((LoadStore::Store, Width::Byte)),
+		"csws" => Some((LoadStore::Store, Width::Short)),
+		"csww" => Some((LoadStore::Store, Width::Word)),
 
 		_ => None,
 	};
@@ -562,13 +557,17 @@ fn csrop<'a>(s: &'a [Token]) -> Result<'a, isa::csr::Operation> {
 		return err;
 	}
 
-	Ok((s, op.unwrap()))
+	let (op, width) = op.unwrap();
+	Ok((s, LoadStoreOp {
+		op: op,
+		width: width,
+	}))
 }
 
 fn csr<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	let (s, op) = csrop(s)?;
 
-	let (s, rd, imm) = if op.is_read() {
+	let (s, rd, imm) = if op.is_load() {
 		let (s, rd) = register(s)?;
 		let (s, _) = comma(s)?;
 		let (s, imm) = constant(s)?;
@@ -588,7 +587,7 @@ fn csr<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	})))
 }
 
-fn memop<'a>(s: &'a [Token]) -> Result<'a, (MemOp, Width)> {
+fn memop<'a>(s: &'a [Token]) -> Result<'a, LoadStoreOp> {
 	let slice = slice_as_option(s);
 	let err = error(s, Error::ExpectedMemOp(slice));
 
@@ -599,13 +598,13 @@ fn memop<'a>(s: &'a [Token]) -> Result<'a, (MemOp, Width)> {
 	let (s, name) = name.unwrap();
 
 	let op = match name {
-		"ldrb" => Some((MemOp::Load, Width::Byte)),
-		"ldrs" => Some((MemOp::Load, Width::Short)),
-		"ldrw" => Some((MemOp::Load, Width::Word)),
+		"ldrb" => Some((LoadStore::Load, Width::Byte)),
+		"ldrs" => Some((LoadStore::Load, Width::Short)),
+		"ldrw" => Some((LoadStore::Load, Width::Word)),
 
-		"strb" => Some((MemOp::Store, Width::Byte)),
-		"strs" => Some((MemOp::Store, Width::Short)),
-		"strw" => Some((MemOp::Store, Width::Word)),
+		"strb" => Some((LoadStore::Store, Width::Byte)),
+		"strs" => Some((LoadStore::Store, Width::Short)),
+		"strw" => Some((LoadStore::Store, Width::Word)),
 
 		_ => None,
 	};
@@ -614,7 +613,11 @@ fn memop<'a>(s: &'a [Token]) -> Result<'a, (MemOp, Width)> {
 		return err;
 	}
 
-	Ok((s, op.unwrap()))
+	let (op, width) = op.unwrap();
+	Ok((s, LoadStoreOp {
+		op: op,
+		width: width,
+	}))
 }
 
 fn mem_operand<'a>(s: &'a [Token]) -> Result<'a, MemOperand> {
@@ -646,9 +649,9 @@ fn mem_operand<'a>(s: &'a [Token]) -> Result<'a, MemOperand> {
 }
 
 pub fn memory<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	let (s, (op, width)) = memop(s)?;
+	let (s, op) = memop(s)?;
 
-	let (s, reg, operand) = if op == MemOp::Load {
+	let (s, reg, operand) = if op.op == LoadStore::Load {
 		let (s, reg) = register(s)?;
 		let (s, _) = comma(s)?;
 		let (s, operand) = mem_operand(s)?;
@@ -663,7 +666,7 @@ pub fn memory<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	let instr = match operand {
 		MemOperand::Rr(rr) => {
 			isa::memory::Instruction::Rr(isa::memory::rr::Instruction {
-				op: (op, width),
+				op: op,
 				rd: reg,
 				rs: rr.rs,
 				rq: rr.rq,
@@ -672,7 +675,7 @@ pub fn memory<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		},
 		MemOperand::Ri(ri) => {
 			isa::memory::Instruction::Ri(isa::memory::ri::Instruction {
-				op: (op, width),
+				op: op,
 				rd: reg,
 				rs: ri.rs,
 				imm: ri.imm,

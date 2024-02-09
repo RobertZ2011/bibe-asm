@@ -38,10 +38,15 @@ pub mod rri {
 		pub dest: Register,
 		pub src: Register,
 		pub imm: Immediate,
+	}
+}
 
-		/// Immediate Left Shift
-		/// Not architectural, allows specifying jumps in terms of instructions
-		pub imm_shl: u8,
+pub mod jump {
+    use super::Immediate;
+
+	#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+	pub struct Instruction {
+		pub imm: Immediate,
 	}
 }
 
@@ -51,6 +56,7 @@ pub enum Instruction {
 	Rrr(isa::rrr::Instruction),
 	Rri(rri::Instruction),
 	Csr(isa::csr::Instruction),
+	Jump(jump::Instruction),
 }
 
 impl Instruction {
@@ -106,17 +112,25 @@ impl Statement {
 		}
 	}
 
-	pub fn is_instruction(&self) -> bool {
+	pub fn instruction(&self) -> Option<Instruction> {
 		match self {
-			Statement::Instruction(_) => true,
-			_ => false
+			Statement::Instruction(instr) => Some(*instr),
+			_ => None
+		}
+	}
+
+	pub fn is_instruction(&self) -> bool {
+		self.instruction().is_some()
+	}
+
+	pub fn directive(&self) -> Option<&Directive> {
+		match self {
+			Statement::Directive(directive) => Some(directive),
+			_ => None
 		}
 	}
 
 	pub fn is_directive(&self) -> bool {
-		match self {
-			Statement::Directive(_) => true,
-			_ => false
-		}
+		self.directive().is_some()
 	}
 }
