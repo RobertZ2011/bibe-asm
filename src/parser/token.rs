@@ -20,6 +20,7 @@ pub enum Punctuation {
 	Comma,
 	Colon,
 	Period,
+	Percent,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -89,11 +90,12 @@ fn constant(s: &str) -> IResult<&str, Token> {
 }
 
 fn punctuation(s: &str) -> IResult<&str, Token> {
-	let (s, c) = alt((char('.'), char(','), char(':')))(s)?;
+	let (s, c) = alt((char('.'), char(','), char(':'), char('%')))(s)?;
 	Ok((s, Token::Punctuation(match c {
 		':' => Punctuation::Colon,
 		',' => Punctuation::Comma,
 		'.' => Punctuation::Period,
+		'%' => Punctuation::Percent,
 		_ => unreachable!(),
 	})))
 }

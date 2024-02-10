@@ -1,10 +1,14 @@
 /* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 mod token;
+mod register;
+
 use isa::{Shift, LoadStore, LoadStoreOp, Width};
 pub use token::{
 	Token,
 	tokenize
 };
+
+use register::*;
 
 pub mod string_table;
 pub use string_table::StringID;
@@ -202,36 +206,6 @@ fn string_constant<'a>(s: &'a [Token]) -> Result<'a, String> {
 	err
 }
 
-fn register<'a>(s: &'a [Token]) -> Result<'a, Register> {
-	let slice = slice_as_option(s);
-	let err = error(s, Error::ExpectedRegister(slice));
-	if slice.is_none() {
-		return err;
-	}
-
-	if let Token::String(iden) = s[0] {
-		let reg = match iden {
-			"pc" => Some(Register::pc()),
-			"lr" => Some(Register::lr()),
-			"fp" => Some(Register::fp()),
-			"sp" => Some(Register::sp()),
-			_ => if iden.len() == 2 {
-				iden[1..2].parse::<u8>().map_or(None, |r| Some(Register::new(r).unwrap()))
-			} else if iden.len() == 3 {
-				iden[1..3].parse::<u8>().map_or(None, |r| Some(Register::new(r).unwrap()))
-			} else {
-				None
-			}
-		};
-
-		if let Some(reg) = reg {
-			return Ok((&s[1..], reg));
-		}
-	}
-
-	err
-}
-
 fn immediate_constant<'a>(s: &'a [Token]) -> Result<'a, asm::Immediate> {
 	constant(s).map(|(s, c)| (s, asm::Immediate::Constant(c)))
 }
@@ -278,6 +252,10 @@ fn comma<'a>(s: &'a [Token]) -> Result<'a, Punctuation> {
 
 fn period<'a>(s: &'a [Token]) -> Result<'a, Punctuation> {
 	punctuation(Punctuation::Period)(s)
+}
+
+fn percent<'a>(s: &'a [Token]) -> Result<'a, Punctuation> {
+	punctuation(Punctuation::Percent)(s)
 }
 
 fn binop<'a>(s: &'a [Token]) -> Result<'a, BinOp> {
