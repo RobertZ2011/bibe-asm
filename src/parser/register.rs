@@ -1,3 +1,4 @@
+/* Copyright 2024 Robert Zieba, see LICENSE file for full license. */
 use crate::parser::token::*;
 use crate::parser::*;
 
