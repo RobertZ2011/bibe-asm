@@ -63,6 +63,66 @@ impl Instruction {
 	pub fn size_of(&self) -> u64 {
 		4
 	}
+
+	pub fn is_memory(&self) -> bool {
+		matches!(self, Instruction::Memory(_))
+	}
+
+	pub fn is_rrr(&self) -> bool {
+		matches!(self, Instruction::Rrr(_))
+	}
+
+	pub fn is_rri(&self) -> bool {
+		matches!(self, Instruction::Rri(_))
+	}
+
+	pub fn is_csr(&self) -> bool {
+		matches!(self, Instruction::Csr(_))
+	}
+
+	pub fn is_jump(&self) -> bool {
+		matches!(self, Instruction::Jump(_))
+	}
+
+	pub fn as_memory(&self) -> Option<&isa::memory::Instruction> {
+		if let Instruction::Memory(value) = self {
+			Some(value)
+		} else {
+			None
+		}
+	}
+
+	pub fn as_rrr(&self) -> Option<&isa::rrr::Instruction> {
+		if let Instruction::Rrr(value) = self {
+			Some(value)
+		} else {
+			None
+		}
+	}
+
+	pub fn as_rri(&self) -> Option<&rri::Instruction> {
+		if let Instruction::Rri(value) = self {
+			Some(value)
+		} else {
+			None
+		}
+	}
+
+	pub fn as_csr(&self) -> Option<&isa::csr::Instruction> {
+		if let Instruction::Csr(value) = self {
+			Some(value)
+		} else {
+			None
+		}
+	}
+
+	pub fn as_jump(&self) -> Option<&jump::Instruction> {
+		if let Instruction::Jump(value) = self {
+			Some(value)
+		} else {
+			None
+		}
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

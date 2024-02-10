@@ -2,7 +2,7 @@
 use crate::parser::token::*;
 use crate::parser::*;
 
-pub fn register<'a>(s: &'a [Token]) -> Result<'a, Register> {
+pub(super) fn register<'a>(s: &'a [Token]) -> Result<'a, Register> {
 	let slice = slice_as_option(s);
 	let err = error(s, Error::ExpectedRegister(slice));
 	if slice.is_none() {

@@ -1,6 +1,7 @@
 /* Copyright 2023 Robert Zieba, see LICENSE file for full license. */
 mod token;
 mod register;
+mod mov;
 
 use isa::{Shift, LoadStore, LoadStoreOp, Width};
 pub use token::{
@@ -9,6 +10,7 @@ pub use token::{
 };
 
 use register::*;
+use mov::*;
 
 pub mod string_table;
 pub use string_table::StringID;
@@ -372,35 +374,6 @@ fn branch<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	))(s)
 }
 
-fn mov_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	let (s, _) = string("mov")(s)?;
-	let (s, cond) = condition(s)?;
-	let (s, dest) = register(s)?;
-	let (s, _) = comma(s)?;
-	let (s, imm) = immediate(s)?;
-	Ok((s, asm::Instruction::Rri(asm::rri::Instruction {
-		op: BinOp::Add,
-		cond: cond,
-		dest: dest,
-		src: if imm.pc_rel().is_none() { Register::r0() } else { Register::pc() },
-		imm: imm,
-	})))
-}
-
-fn mov_r<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	let (s, _) = string("mov")(s)?;
-	let (s, dest) = register(s)?;
-	let (s, _) = comma(s)?;
-	let (s, src) = register(s)?;
-	Ok((s, asm::Instruction::Rrr(isa::rrr::Instruction {
-		op: BinOp::Add,
-		dest: dest,
-		lhs: Register::r0(),
-		rhs: src,
-		shift: isa::Shift::default(),
-	})))
-}
-
 fn nop<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 	let (s, _) = string("nop")(s)?;
 	Ok((s, asm::Instruction::Rrr(isa::rrr::Instruction {
@@ -410,13 +383,6 @@ fn nop<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		rhs: Register::r0(),
 		shift: isa::Shift::default(),
 	})))
-}
-
-fn mov<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	alt((
-		mov_r,
-		mov_i,
-	))(s)
 }
 
 fn cmp_i<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
