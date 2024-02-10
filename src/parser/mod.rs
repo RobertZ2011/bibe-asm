@@ -2,6 +2,7 @@
 mod token;
 mod register;
 mod mov;
+mod csr;
 
 use isa::{Shift, LoadStore, LoadStoreOp, Width};
 pub use token::{
@@ -11,6 +12,7 @@ pub use token::{
 
 use register::*;
 use mov::*;
+use csr::*;
 
 pub mod string_table;
 pub use string_table::StringID;
@@ -427,6 +429,7 @@ fn alias<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 		mov,
 		nop,
 		cmp,
+		csr_alias,
 	))(s)
 }
 
@@ -473,62 +476,6 @@ fn rri<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
 			imm: imm,
 		}
 	)))
-}
-
-fn csrop<'a>(s: &'a [Token]) -> Result<'a, LoadStoreOp> {
-	let slice = slice_as_option(s);
-	let err = error(s, Error::ExpectedCsrOp(slice));
-
-	let name = name(s);
-	if name.is_err() {
-		return err;
-	}
-	let (s, name) = name.unwrap();
-
-	let op = match name {
-		"csrb" => Some((LoadStore::Load, Width::Byte)),
-		"csrs" => Some((LoadStore::Load, Width::Short)),
-		"csrw" => Some((LoadStore::Load, Width::Word)),
-
-		"cswb" => Some((LoadStore::Store, Width::Byte)),
-		"csws" => Some((LoadStore::Store, Width::Short)),
-		"csww" => Some((LoadStore::Store, Width::Word)),
-
-		_ => None,
-	};
-
-	if op.is_none() {
-		return err;
-	}
-
-	let (op, width) = op.unwrap();
-	Ok((s, LoadStoreOp {
-		op: op,
-		width: width,
-	}))
-}
-
-fn csr<'a>(s: &'a [Token]) -> Result<'a, asm::Instruction> {
-	let (s, op) = csrop(s)?;
-
-	let (s, rd, imm) = if op.is_load() {
-		let (s, rd) = register(s)?;
-		let (s, _) = comma(s)?;
-		let (s, imm) = constant(s)?;
-		(s, rd, imm)
-
-	} else {
-		let (s, imm) = constant(s)?;
-		let (s, _) = comma(s)?;
-		let (s, rd) = register(s)?;
-		(s, rd, imm)
-	};
-
-	Ok((s, asm::Instruction::Csr(isa::csr::Instruction {
-		op: op, 
-		reg: rd, 
-		imm: imm as u32
-	})))
 }
 
 fn memop<'a>(s: &'a [Token]) -> Result<'a, LoadStoreOp> {
